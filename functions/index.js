@@ -1,32 +1,98 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const logger = require("firebase-functions/logger");
+admin.initializeApp();
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+const db = admin.firestore();
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+exports.confirmOrder = onCall(async (request) => {
+  const {orderId} = request.data;
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+  }
+
+  const userDoc = await db.collection("users").doc(request.auth.uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("permission-denied", "Usuário não encontrado.");
+  }
+
+  const user = userDoc.data();
+
+  if (user.role !== "ADMIN") {
+    throw new HttpsError(
+        "permission-denied",
+        "Apenas administradores podem confirmar pedidos.",
+    );
+  }
+
+  const orderRef = db.collection("orders").doc(orderId);
+  const orderSnap = await orderRef.get();
+
+  if (!orderSnap.exists) {
+    throw new HttpsError("not-found", "Pedido não encontrado.");
+  }
+
+  const order = orderSnap.data();
+
+  if (order.status !== "PENDENTE") {
+    throw new HttpsError("failed-precondition", "Pedido já processado.");
+  }
+
+  const batch = db.batch();
+
+  for (const item of order.items) {
+    const variantRef = db
+        .collection("products")
+        .doc(item.productId)
+        .collection("variants")
+        .doc(item.variantId);
+
+    const variantSnap = await variantRef.get();
+
+    if (!variantSnap.exists) {
+      throw new HttpsError("not-found", "Variante não encontrada.");
+    }
+
+    const variant = variantSnap.data();
+
+    if (variant.stock < item.quantity) {
+      throw new HttpsError("failed-precondition", "Estoque insuficiente.");
+    }
+
+    const newStock = variant.stock - item.quantity;
+
+    batch.update(variantRef, {
+      stock: newStock,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const movementRef = db.collection("stock_movements").doc();
+
+    batch.set(movementRef, {
+      productId: item.productId,
+      variantId: item.variantId,
+      type: "OUT",
+      reason: "ORDER_CONFIRMED",
+      quantity: item.quantity,
+      previousStock: variant.stock,
+      newStock: newStock,
+      orderId: orderId,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  }
+
+  batch.update(orderRef, {
+    status: "PAGO",
+    paymentStatus: "CONFIRMADO",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await batch.commit();
+
+  return {
+    success: true,
+    message: "Pedido confirmado com sucesso.",
+  };
+});
