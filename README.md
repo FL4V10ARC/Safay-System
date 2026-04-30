@@ -11,3 +11,26 @@ Projeto acadêmico com possibilidade de uso real no negócio da loja.
 - Cloud Storage
 - Cloud Functions
 - Git/GitHub
+
+## Modelagem do banco
+
+users
+categories
+products
+products/{productId}/variants/{variantId}
+
+### Estrutura de products
+- name
+- description
+- categoryName
+- basePrice
+- featured
+- active
+
+### Estrutura de variants
+- sku
+- color
+- size
+- price
+- stock
+- active
