@@ -98,8 +98,27 @@ exports.confirmOrder = onCall(async (request) => {
   };
 });
 
-exports.testConfirmOrder = onCall(async (request) => {
+exports.cancelOrder = onCall(async (request) => {
   const {orderId} = request.data;
+
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+  }
+
+  const userDoc = await db.collection("users").doc(request.auth.uid).get();
+
+  if (!userDoc.exists) {
+    throw new HttpsError("permission-denied", "Usuário não encontrado.");
+  }
+
+  const user = userDoc.data();
+
+  if (user.role !== "ADMIN") {
+    throw new HttpsError(
+        "permission-denied",
+        "Apenas administradores podem cancelar pedidos.",
+    );
+  }
 
   const orderRef = db.collection("orders").doc(orderId);
   const orderSnap = await orderRef.get();
@@ -110,8 +129,11 @@ exports.testConfirmOrder = onCall(async (request) => {
 
   const order = orderSnap.data();
 
-  if (order.status !== "PENDENTE") {
-    throw new HttpsError("failed-precondition", "Pedido já processado.");
+  if (order.status !== "PAGO") {
+    throw new HttpsError(
+        "failed-precondition",
+        "Apenas pedidos pagos podem ser cancelados.",
+    );
   }
 
   const batch = db.batch();
@@ -130,12 +152,7 @@ exports.testConfirmOrder = onCall(async (request) => {
     }
 
     const variant = variantSnap.data();
-
-    if (variant.stock < item.quantity) {
-      throw new HttpsError("failed-precondition", "Estoque insuficiente.");
-    }
-
-    const newStock = variant.stock - item.quantity;
+    const newStock = variant.stock + item.quantity;
 
     batch.update(variantRef, {
       stock: newStock,
@@ -147,8 +164,8 @@ exports.testConfirmOrder = onCall(async (request) => {
     batch.set(movementRef, {
       productId: item.productId,
       variantId: item.variantId,
-      type: "OUT",
-      reason: "ORDER_CONFIRMED_TEST",
+      type: "IN",
+      reason: "ORDER_CANCELED",
       quantity: item.quantity,
       previousStock: variant.stock,
       newStock: newStock,
@@ -158,8 +175,8 @@ exports.testConfirmOrder = onCall(async (request) => {
   }
 
   batch.update(orderRef, {
-    status: "PAGO",
-    paymentStatus: "CONFIRMADO",
+    status: "CANCELADO",
+    canceledAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -167,6 +184,6 @@ exports.testConfirmOrder = onCall(async (request) => {
 
   return {
     success: true,
-    message: "Pedido confirmado em teste.",
+    message: "Pedido cancelado com sucesso.",
   };
 });
