@@ -77,6 +77,8 @@ async function seed() {
     status: "PENDENTE",
     paymentStatus: "PENDENTE",
     total: 149.99,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     items: [
       {
         productId: productRef.id,
