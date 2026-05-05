@@ -3,9 +3,13 @@ const {cancelOrder} = require("./orders/cancelOrder");
 const {updateOrderStatus} = require("./orders/updateOrderStatus");
 const {getOrders} = require("./orders/getOrders");
 const {getOrderById} = require("./orders/getOrderById");
+const {createOrder} = require("./orders/createOrder");
+const {getOrdersByPhone} = require("./orders/getOrdersByPhone");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
 exports.updateOrderStatus = updateOrderStatus;
 exports.getOrders = getOrders;
 exports.getOrderById = getOrderById;
+exports.createOrder = createOrder;
+exports.getOrdersByPhone = getOrdersByPhone;
