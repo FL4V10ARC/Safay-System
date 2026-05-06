@@ -8,6 +8,7 @@ const {getOrdersByPhone} = require("./orders/getOrdersByPhone");
 const {createProduct} = require("./products/createProduct");
 const {getProducts} = require("./products/getProducts");
 const {getProductById} = require("./products/getProductById");
+const {updateProduct} = require("./products/updateProduct");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
@@ -19,3 +20,4 @@ exports.getOrdersByPhone = getOrdersByPhone;
 exports.createProduct = createProduct;
 exports.getProducts = getProducts;
 exports.getProductById = getProductById;
+exports.updateProduct = updateProduct;
