@@ -21,6 +21,7 @@ const {getCart} = require("./cart/getCart");
 const {updateCartItem} = require("./cart/updateCartItem");
 const {removeCartItem} = require("./cart/removeCartItem");
 const {clearCart} = require("./cart/clearCart");
+const {checkoutFromCart} = require("./cart/checkoutFromCart");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
@@ -45,3 +46,4 @@ exports.getCart = getCart;
 exports.updateCartItem = updateCartItem;
 exports.removeCartItem = removeCartItem;
 exports.clearCart = clearCart;
+exports.checkoutFromCart = checkoutFromCart;
