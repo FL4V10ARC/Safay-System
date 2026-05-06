@@ -1,6 +1,6 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { FieldValue } = require("firebase-admin/firestore");
-const { db } = require("../config/firebase");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {FieldValue} = require("firebase-admin/firestore");
+const {db} = require("../config/firebase");
 
 exports.syncCustomerProfile = onCall(async (request) => {
   if (!request.auth) {
@@ -17,8 +17,8 @@ exports.syncCustomerProfile = onCall(async (request) => {
 
   if (!name && !email && !phone) {
     throw new HttpsError(
-      "invalid-argument",
-      "Informe pelo menos nome, e-mail ou telefone.",
+        "invalid-argument",
+        "Informe pelo menos nome, e-mail ou telefone.",
     );
   }
 

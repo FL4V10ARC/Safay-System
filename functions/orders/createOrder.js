@@ -1,6 +1,6 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { FieldValue } = require("firebase-admin/firestore");
-const { db } = require("../config/firebase");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {FieldValue} = require("firebase-admin/firestore");
+const {db} = require("../config/firebase");
 
 exports.createOrder = onCall(async (request) => {
   if (!request.auth) {
@@ -17,8 +17,8 @@ exports.createOrder = onCall(async (request) => {
 
   if (!Array.isArray(items) || items.length === 0) {
     throw new HttpsError(
-      "invalid-argument",
-      "O pedido deve possuir pelo menos um item.",
+        "invalid-argument",
+        "O pedido deve possuir pelo menos um item.",
     );
   }
 
@@ -27,8 +27,8 @@ exports.createOrder = onCall(async (request) => {
 
   if (!userSnap.exists) {
     throw new HttpsError(
-      "failed-precondition",
-      "Perfil do cliente não encontrado.",
+        "failed-precondition",
+        "Perfil do cliente não encontrado.",
     );
   }
 
@@ -44,15 +44,15 @@ exports.createOrder = onCall(async (request) => {
   for (const item of items) {
     if (!item.productId || !item.variantId || !item.quantity) {
       throw new HttpsError(
-        "invalid-argument",
-        "Produto, variação e quantidade são obrigatórios.",
+          "invalid-argument",
+          "Produto, variação e quantidade são obrigatórios.",
       );
     }
 
     if (item.quantity <= 0) {
       throw new HttpsError(
-        "invalid-argument",
-        "A quantidade deve ser maior que zero.",
+          "invalid-argument",
+          "A quantidade deve ser maior que zero.",
       );
     }
 
