@@ -7,6 +7,7 @@ const {createOrder} = require("./orders/createOrder");
 const {getOrdersByPhone} = require("./orders/getOrdersByPhone");
 const {createProduct} = require("./products/createProduct");
 const {getProducts} = require("./products/getProducts");
+const {getProductById} = require("./products/getProductById");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
@@ -17,3 +18,4 @@ exports.createOrder = createOrder;
 exports.getOrdersByPhone = getOrdersByPhone;
 exports.createProduct = createProduct;
 exports.getProducts = getProducts;
+exports.getProductById = getProductById;
