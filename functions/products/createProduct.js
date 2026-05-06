@@ -1,7 +1,7 @@
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { FieldValue } = require("firebase-admin/firestore");
-const { db } = require("../config/firebase");
-const { validateAdmin } = require("../utils/auth");
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {FieldValue} = require("firebase-admin/firestore");
+const {db} = require("../config/firebase");
+const {validateAdmin} = require("../utils/auth");
 
 exports.createProduct = onCall(async (request) => {
   const {
@@ -20,15 +20,15 @@ exports.createProduct = onCall(async (request) => {
 
   if (!name || !categoryName || !basePrice) {
     throw new HttpsError(
-      "invalid-argument",
-      "Nome, categoria e preço base são obrigatórios.",
+        "invalid-argument",
+        "Nome, categoria e preço base são obrigatórios.",
     );
   }
 
   if (!Array.isArray(variants) || variants.length === 0) {
     throw new HttpsError(
-      "invalid-argument",
-      "O produto precisa ter pelo menos uma variante.",
+        "invalid-argument",
+        "O produto precisa ter pelo menos uma variante.",
     );
   }
 
@@ -52,8 +52,8 @@ exports.createProduct = onCall(async (request) => {
   for (const variant of variants) {
     if (!variant.sku || !variant.color || !variant.size || !variant.price) {
       throw new HttpsError(
-        "invalid-argument",
-        "SKU, cor, tamanho e preço são obrigatórios.",
+          "invalid-argument",
+          "SKU, cor, tamanho e preço são obrigatórios.",
       );
     }
 

@@ -1,28 +1,41 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { FieldValue } = require("firebase-admin/firestore");
+const { db } = require("../config/firebase");
 
 exports.createOrder = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+  }
+
   const {
-    customer,
     items,
     deliveryType,
     deliveryFee = 0,
+    deliveryAddress = {},
     notes = "",
   } = request.data;
 
-  if (!customer || !customer.name || !customer.phone) {
+  if (!Array.isArray(items) || items.length === 0) {
     throw new HttpsError(
-        "invalid-argument",
-        "Nome e telefone do cliente são obrigatórios.",
+      "invalid-argument",
+      "O pedido deve possuir pelo menos um item.",
     );
   }
 
-  if (!Array.isArray(items) || items.length === 0) {
+  const userRef = db.collection("users").doc(request.auth.uid);
+  const userSnap = await userRef.get();
+
+  if (!userSnap.exists) {
     throw new HttpsError(
-        "invalid-argument",
-        "O pedido deve possuir pelo menos um item.",
+      "failed-precondition",
+      "Perfil do cliente não encontrado.",
     );
+  }
+
+  const user = userSnap.data();
+
+  if (user.active !== true) {
+    throw new HttpsError("permission-denied", "Usuário inativo.");
   }
 
   const orderItems = [];
@@ -31,15 +44,15 @@ exports.createOrder = onCall(async (request) => {
   for (const item of items) {
     if (!item.productId || !item.variantId || !item.quantity) {
       throw new HttpsError(
-          "invalid-argument",
-          "Produto, variação e quantidade são obrigatórios.",
+        "invalid-argument",
+        "Produto, variação e quantidade são obrigatórios.",
       );
     }
 
     if (item.quantity <= 0) {
       throw new HttpsError(
-          "invalid-argument",
-          "A quantidade deve ser maior que zero.",
+        "invalid-argument",
+        "A quantidade deve ser maior que zero.",
       );
     }
 
@@ -95,11 +108,13 @@ exports.createOrder = onCall(async (request) => {
   const orderRef = db.collection("orders").doc();
 
   await orderRef.set({
-    customer: {
-      name: customer.name,
-      phone: customer.phone,
-      address: customer.address || "",
+    customerId: request.auth.uid,
+    customerSnapshot: {
+      name: user.name,
+      email: user.email,
+      phone: user.phone || "",
     },
+    deliveryAddress,
     items: orderItems,
     total,
     status: "PENDENTE",
