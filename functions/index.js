@@ -5,6 +5,8 @@ const {getOrders} = require("./orders/getOrders");
 const {getOrderById} = require("./orders/getOrderById");
 const {createOrder} = require("./orders/createOrder");
 const {getOrdersByPhone} = require("./orders/getOrdersByPhone");
+const {createProduct} = require("./products/createProduct");
+const {getProducts} = require("./products/getProducts");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
@@ -13,3 +15,5 @@ exports.getOrders = getOrders;
 exports.getOrderById = getOrderById;
 exports.createOrder = createOrder;
 exports.getOrdersByPhone = getOrdersByPhone;
+exports.createProduct = createProduct;
+exports.getProducts = getProducts;
