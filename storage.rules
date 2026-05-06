@@ -7,8 +7,18 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() &&
+        firestore.get(
+          /databases/(default)/documents/users/$(request.auth.uid)
+        ).data.role == "ADMIN" &&
+        firestore.get(
+          /databases/(default)/documents/users/$(request.auth.uid)
+        ).data.active == true;
+    }
+
     function isImage() {
-      return request.resource.contentType.matches('image/.*');
+      return request.resource.contentType.matches("image/.*");
     }
 
     function isValidSize() {
@@ -17,7 +27,9 @@ service firebase.storage {
 
     match /products/{productId}/{fileName} {
       allow read: if true;
-      allow write: if signedIn() && isImage() && isValidSize();
+      allow write: if isAdmin() &&
+        isImage() &&
+        isValidSize();
     }
 
     match /{allPaths=**} {
