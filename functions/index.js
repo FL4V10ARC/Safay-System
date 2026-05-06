@@ -9,6 +9,8 @@ const {createProduct} = require("./products/createProduct");
 const {getProducts} = require("./products/getProducts");
 const {getProductById} = require("./products/getProductById");
 const {updateProduct} = require("./products/updateProduct");
+const {updateVariant} = require("./products/updateVariant");
+const {deleteProduct} = require("./products/deleteProduct");
 
 exports.confirmOrder = confirmOrder;
 exports.cancelOrder = cancelOrder;
@@ -21,3 +23,5 @@ exports.createProduct = createProduct;
 exports.getProducts = getProducts;
 exports.getProductById = getProductById;
 exports.updateProduct = updateProduct;
+exports.updateVariant = updateVariant;
+exports.deleteProduct = deleteProduct;
