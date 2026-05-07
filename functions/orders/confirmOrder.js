@@ -1,79 +1,93 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
-const {validateAdmin} = require("../utils/auth");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
+const {validateAdmin} = require('../utils/auth');
+const logger = require('firebase-functions/logger');
 
 exports.confirmOrder = onCall(async (request) => {
-  const {orderId} = request.data;
-
   await validateAdmin(request);
 
-  const orderRef = db.collection("orders").doc(orderId);
-  const orderSnap = await orderRef.get();
+  const {orderId} = request.data;
 
-  if (!orderSnap.exists) {
-    throw new HttpsError("not-found", "Pedido não encontrado.");
+  if (!orderId) {
+    throw new HttpsError('invalid-argument', 'ID do pedido é obrigatório.');
   }
 
-  const order = orderSnap.data();
+  const orderRef = db.collection('orders').doc(orderId);
 
-  if (order.status !== "PENDENTE") {
-    throw new HttpsError("failed-precondition", "Pedido já processado.");
-  }
+  try {
+    await db.runTransaction(async (transaction) => {
+      // Lê o pedido DENTRO da transaction — evita confirmação duplicada
+      const orderDoc = await transaction.get(orderRef);
 
-  const batch = db.batch();
+      if (!orderDoc.exists) {
+        throw new HttpsError('not-found', 'Pedido não encontrado.');
+      }
 
-  for (const item of order.items) {
-    const variantRef = db
-        .collection("products")
-        .doc(item.productId)
-        .collection("variants")
-        .doc(item.variantId);
+      if (orderDoc.data().status !== 'PENDENTE') {
+        throw new HttpsError('failed-precondition', 'Pedido já processado.');
+      }
 
-    const variantSnap = await variantRef.get();
+      const order = orderDoc.data();
 
-    if (!variantSnap.exists) {
-      throw new HttpsError("not-found", "Variante não encontrada.");
-    }
+      for (const item of order.items) {
+        const variantRef = db
+            .collection('products')
+            .doc(item.productId)
+            .collection('variants')
+            .doc(item.variantId);
 
-    const variant = variantSnap.data();
+        // Leitura de estoque DENTRO da transaction
+        const variantDoc = await transaction.get(variantRef);
 
-    if (variant.stock < item.quantity) {
-      throw new HttpsError("failed-precondition", "Estoque insuficiente.");
-    }
+        if (!variantDoc.exists) {
+          throw new HttpsError('not-found', `Variante ${item.variantId} não encontrada.`);
+        }
 
-    const newStock = variant.stock - item.quantity;
+        const currentStock = variantDoc.data().stock ?? 0;
 
-    batch.update(variantRef, {
-      stock: newStock,
-      updatedAt: FieldValue.serverTimestamp(),
+        if (currentStock < item.quantity) {
+          throw new HttpsError(
+              'failed-precondition',
+              `Estoque insuficiente para "${item.productName}". Disponível: ${currentStock}.`,
+          );
+        }
+
+        const newStock = currentStock - item.quantity;
+
+        transaction.update(variantRef, {
+          stock: newStock,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const movementRef = db.collection('stock_movements').doc();
+        transaction.set(movementRef, {
+          productId: item.productId,
+          variantId: item.variantId,
+          type: 'OUT',
+          reason: 'ORDER_CONFIRMED',
+          quantity: item.quantity,
+          previousStock: currentStock,
+          newStock,
+          orderId,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
+
+      transaction.update(orderRef, {
+        status: 'PAGO',
+        paymentStatus: 'CONFIRMADO',
+        confirmedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
     });
-
-    const movementRef = db.collection("stock_movements").doc();
-
-    batch.set(movementRef, {
-      productId: item.productId,
-      variantId: item.variantId,
-      type: "OUT",
-      reason: "ORDER_CONFIRMED",
-      quantity: item.quantity,
-      previousStock: variant.stock,
-      newStock: newStock,
-      orderId,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    logger.error('Erro ao confirmar pedido', {error: err.message, orderId});
+    throw new HttpsError('internal', 'Erro ao confirmar pedido. Tente novamente.');
   }
 
-  batch.update(orderRef, {
-    status: "PAGO",
-    paymentStatus: "CONFIRMADO",
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  logger.info('Pedido confirmado', {orderId, adminId: request.auth.uid});
 
-  await batch.commit();
-
-  return {
-    success: true,
-    message: "Pedido confirmado com sucesso.",
-  };
+  return {success: true, message: 'Pedido confirmado com sucesso.'};
 });

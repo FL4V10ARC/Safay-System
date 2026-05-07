@@ -1,6 +1,6 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {db} = require("../config/firebase");
-const {validateAdmin} = require("../utils/auth");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {db} = require('../config/firebase');
+const {validateAdmin} = require('../utils/auth');
 
 exports.getOrderById = onCall(async (request) => {
   const {orderId} = request.data;
@@ -8,14 +8,14 @@ exports.getOrderById = onCall(async (request) => {
   await validateAdmin(request);
 
   if (!orderId) {
-    throw new HttpsError("invalid-argument", "O ID do pedido é obrigatório.");
+    throw new HttpsError('invalid-argument', 'O ID do pedido é obrigatório.');
   }
 
-  const orderRef = db.collection("orders").doc(orderId);
+  const orderRef = db.collection('orders').doc(orderId);
   const orderSnap = await orderRef.get();
 
   if (!orderSnap.exists) {
-    throw new HttpsError("not-found", "Pedido não encontrado.");
+    throw new HttpsError('not-found', 'Pedido não encontrado.');
   }
 
   return {

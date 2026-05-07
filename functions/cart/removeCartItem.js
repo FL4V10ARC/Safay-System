@@ -1,28 +1,28 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
 
 exports.removeCartItem = onCall(async (request) => {
   if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
 
   const {productId, variantId} = request.data || {};
 
   if (!productId || !variantId) {
     throw new HttpsError(
-        "invalid-argument",
-        "Produto e variante são obrigatórios.",
+        'invalid-argument',
+        'Produto e variante são obrigatórios.',
     );
   }
 
-  const cartRef = db.collection("carts").doc(request.auth.uid);
+  const cartRef = db.collection('carts').doc(request.auth.uid);
   const cartSnap = await cartRef.get();
 
   if (!cartSnap.exists) {
     return {
       success: true,
-      message: "Carrinho já está vazio.",
+      message: 'Carrinho já está vazio.',
       items: [],
     };
   }
@@ -44,7 +44,7 @@ exports.removeCartItem = onCall(async (request) => {
 
   return {
     success: true,
-    message: "Item removido do carrinho com sucesso.",
+    message: 'Item removido do carrinho com sucesso.',
     items,
   };
 });

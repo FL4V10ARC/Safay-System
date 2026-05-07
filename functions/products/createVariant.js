@@ -1,7 +1,7 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
-const {validateAdmin} = require("../utils/auth");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
+const {validateAdmin} = require('../utils/auth');
 
 exports.createVariant = onCall(async (request) => {
   const {
@@ -18,19 +18,19 @@ exports.createVariant = onCall(async (request) => {
 
   if (!productId || !sku || !color || !size || !price) {
     throw new HttpsError(
-        "invalid-argument",
-        "Dados obrigatórios da variante ausentes.",
+        'invalid-argument',
+        'Dados obrigatórios da variante ausentes.',
     );
   }
 
-  const productRef = db.collection("products").doc(productId);
+  const productRef = db.collection('products').doc(productId);
   const productSnap = await productRef.get();
 
   if (!productSnap.exists) {
-    throw new HttpsError("not-found", "Produto não encontrado.");
+    throw new HttpsError('not-found', 'Produto não encontrado.');
   }
 
-  const variantRef = productRef.collection("variants").doc();
+  const variantRef = productRef.collection('variants').doc();
 
   await variantRef.set({
     sku,
@@ -45,7 +45,7 @@ exports.createVariant = onCall(async (request) => {
 
   return {
     success: true,
-    message: "Variante criada com sucesso.",
+    message: 'Variante criada com sucesso.',
     variantId: variantRef.id,
   };
 });

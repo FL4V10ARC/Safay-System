@@ -1,49 +1,63 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
-const {validateAdmin} = require("../utils/auth");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
+const {validateAdmin} = require('../utils/auth');
+const logger = require('firebase-functions/logger');
+
+// State machine explícita — define quais transições são válidas
+const VALID_TRANSITIONS = {
+  'PENDENTE': ['PAGO', 'CANCELADO'],
+  'PAGO': ['EM_PREPARACAO', 'CANCELADO'],
+  'EM_PREPARACAO': ['EM_ENTREGA'],
+  'EM_ENTREGA': ['FINALIZADO'],
+  'FINALIZADO': [], // terminal
+  'CANCELADO': [], // terminal
+};
 
 exports.updateOrderStatus = onCall(async (request) => {
+  validateAdmin(request);
+
   const {orderId, status} = request.data;
 
-  await validateAdmin(request);
-
-  const allowedStatus = ["PAGO", "EM_PREPARACAO", "EM_ENTREGA", "FINALIZADO"];
-
-  if (!allowedStatus.includes(status)) {
-    throw new HttpsError("invalid-argument", "Status inválido.");
+  if (!orderId || !status) {
+    throw new HttpsError('invalid-argument', 'ID do pedido e status são obrigatórios.');
   }
 
-  const orderRef = db.collection("orders").doc(orderId);
+  const allStatuses = Object.keys(VALID_TRANSITIONS);
+  if (!allStatuses.includes(status)) {
+    throw new HttpsError('invalid-argument', `Status inválido. Valores aceitos: ${allStatuses.join(', ')}.`);
+  }
+
+  const orderRef = db.collection('orders').doc(orderId);
   const orderSnap = await orderRef.get();
 
   if (!orderSnap.exists) {
-    throw new HttpsError("not-found", "Pedido não encontrado.");
+    throw new HttpsError('not-found', 'Pedido não encontrado.');
   }
 
-  const order = orderSnap.data();
+  const currentStatus = orderSnap.data().status;
+  const allowedTransitions = VALID_TRANSITIONS[currentStatus] ?? [];
 
-  if (order.status === "CANCELADO") {
+  if (!allowedTransitions.includes(status)) {
     throw new HttpsError(
-        "failed-precondition",
-        "Pedidos cancelados não podem ser atualizados.",
-    );
-  }
-
-  if (order.status === "FINALIZADO") {
-    throw new HttpsError(
-        "failed-precondition",
-        "Pedidos finalizados não podem ser atualizados.",
+        'failed-precondition',
+        `Não é possível alterar de "${currentStatus}" para "${status}". ` +
+        `Transições permitidas: ${allowedTransitions.join(', ') || 'nenhuma (status terminal)'}.`,
     );
   }
 
   await orderRef.update({
     status,
+    [`statusHistory.${status}`]: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  return {
-    success: true,
-    message: "Status do pedido atualizado com sucesso.",
-  };
+  logger.info('Status do pedido atualizado', {
+    orderId,
+    from: currentStatus,
+    to: status,
+    adminId: request.auth.uid,
+  });
+
+  return {success: true, message: 'Status do pedido atualizado com sucesso.'};
 });

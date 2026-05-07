@@ -1,29 +1,29 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
 
 exports.updateCartItem = onCall(async (request) => {
   if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
 
   const {productId, variantId, quantity} = request.data || {};
 
   if (!productId || !variantId || !quantity) {
     throw new HttpsError(
-        "invalid-argument",
-        "Produto, variante e quantidade são obrigatórios.",
+        'invalid-argument',
+        'Produto, variante e quantidade são obrigatórios.',
     );
   }
 
   if (quantity <= 0) {
     throw new HttpsError(
-        "invalid-argument",
-        "A quantidade deve ser maior que zero.",
+        'invalid-argument',
+        'A quantidade deve ser maior que zero.',
     );
   }
 
-  const cartRef = db.collection("carts").doc(request.auth.uid);
+  const cartRef = db.collection('carts').doc(request.auth.uid);
   const cartSnap = await cartRef.get();
 
   let items = [];
@@ -57,7 +57,7 @@ exports.updateCartItem = onCall(async (request) => {
 
   return {
     success: true,
-    message: "Item do carrinho atualizado com sucesso.",
+    message: 'Item do carrinho atualizado com sucesso.',
     items,
   };
 });

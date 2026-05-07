@@ -1,5 +1,5 @@
-const {onCall} = require("firebase-functions/v2/https");
-const {db} = require("../config/firebase");
+const {onCall} = require('firebase-functions/v2/https');
+const {db} = require('../config/firebase');
 
 exports.getProducts = onCall(async (request) => {
   const {
@@ -7,49 +7,56 @@ exports.getProducts = onCall(async (request) => {
     featured,
     active = true,
     limit = 20,
+    startAfterDocId,
   } = request.data || {};
 
+  const safeLimit = Math.min(Math.max(1, parseInt(limit) || 20), 100);
+
   let query = db
-      .collection("products")
-      .where("active", "==", active)
-      .limit(limit);
+      .collection('products')
+      .where('active', '==', active)
+      .orderBy('createdAt', 'desc')
+      .limit(safeLimit);
 
   if (categoryName) {
-    query = query.where("categoryName", "==", categoryName);
+    query = query.where('categoryName', '==', categoryName);
   }
 
   if (featured === true) {
-    query = query.where("featured", "==", true);
+    query = query.where('featured', '==', true);
+  }
+
+  if (startAfterDocId) {
+    const cursor = await db.collection('products').doc(startAfterDocId).get();
+    if (cursor.exists) {
+      query = query.startAfter(cursor);
+    }
   }
 
   const snapshot = await query.get();
 
-  const products = [];
-
-  for (const doc of snapshot.docs) {
-    const product = doc.data();
-
-    const variantsSnapshot = await db
-        .collection("products")
+  // Busca todas as variantes em paralelo — não sequencial (N+1 eliminado)
+  const variantPromises = snapshot.docs.map((doc) =>
+    db
+        .collection('products')
         .doc(doc.id)
-        .collection("variants")
-        .where("active", "==", true)
-        .get();
+        .collection('variants')
+        .where('active', '==', true)
+        .get(),
+  );
 
-    const variants = variantsSnapshot.docs.map((variantDoc) => ({
-      id: variantDoc.id,
-      ...variantDoc.data(),
-    }));
+  const variantSnapshots = await Promise.all(variantPromises);
 
-    products.push({
-      id: doc.id,
-      ...product,
-      variants,
-    });
-  }
+  const products = snapshot.docs.map((doc, i) => ({
+    id: doc.id,
+    ...doc.data(),
+    variants: variantSnapshots[i].docs.map((v) => ({id: v.id, ...v.data()})),
+  }));
 
   return {
     success: true,
     products,
+    nextCursor: snapshot.docs[snapshot.docs.length - 1]?.id ?? null,
+    hasMore: snapshot.docs.length === safeLimit,
   };
 });

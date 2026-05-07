@@ -1,134 +1,164 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {FieldValue} = require("firebase-admin/firestore");
-const {db} = require("../config/firebase");
+const {onCall, HttpsError} = require('firebase-functions/v2/https');
+const {FieldValue} = require('firebase-admin/firestore');
+const {db} = require('../config/firebase');
+const logger = require('firebase-functions/logger');
 
 exports.createOrder = onCall(async (request) => {
   if (!request.auth) {
-    throw new HttpsError("unauthenticated", "Usuário não autenticado.");
+    throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
   }
 
   const {
     items,
-    deliveryType,
+    deliveryType = 'RETIRADA',
     deliveryFee = 0,
     deliveryAddress = {},
-    notes = "",
+    notes = '',
   } = request.data;
 
   if (!Array.isArray(items) || items.length === 0) {
-    throw new HttpsError(
-        "invalid-argument",
-        "O pedido deve possuir pelo menos um item.",
-    );
+    throw new HttpsError('invalid-argument', 'O pedido deve possuir pelo menos um item.');
   }
 
-  const userRef = db.collection("users").doc(request.auth.uid);
+  if (typeof deliveryFee !== 'number' || deliveryFee < 0) {
+    throw new HttpsError('invalid-argument', 'Taxa de entrega inválida.');
+  }
+
+  if (!['RETIRADA', 'ENTREGA'].includes(deliveryType)) {
+    throw new HttpsError('invalid-argument', 'Tipo de entrega inválido.');
+  }
+
+  const userId = request.auth.uid;
+  const userRef = db.collection('users').doc(userId);
   const userSnap = await userRef.get();
 
   if (!userSnap.exists) {
-    throw new HttpsError(
-        "failed-precondition",
-        "Perfil do cliente não encontrado.",
-    );
+    throw new HttpsError('failed-precondition', 'Perfil do cliente não encontrado.');
   }
 
   const user = userSnap.data();
 
   if (user.active !== true) {
-    throw new HttpsError("permission-denied", "Usuário inativo.");
+    throw new HttpsError('permission-denied', 'Usuário inativo.');
   }
 
-  const orderItems = [];
-  let total = 0;
-
+  // Valida estrutura básica dos itens antes de abrir a transaction
   for (const item of items) {
     if (!item.productId || !item.variantId || !item.quantity) {
-      throw new HttpsError(
-          "invalid-argument",
-          "Produto, variação e quantidade são obrigatórios.",
-      );
+      throw new HttpsError('invalid-argument', 'Produto, variação e quantidade são obrigatórios.');
     }
-
-    if (item.quantity <= 0) {
-      throw new HttpsError(
-          "invalid-argument",
-          "A quantidade deve ser maior que zero.",
-      );
+    if (typeof item.quantity !== 'number' || item.quantity <= 0 || !Number.isInteger(item.quantity)) {
+      throw new HttpsError('invalid-argument', 'Quantidade deve ser um número inteiro positivo.');
     }
-
-    const productRef = db.collection("products").doc(item.productId);
-    const productSnap = await productRef.get();
-
-    if (!productSnap.exists) {
-      throw new HttpsError("not-found", "Produto não encontrado.");
-    }
-
-    const product = productSnap.data();
-
-    if (product.active !== true) {
-      throw new HttpsError("failed-precondition", "Produto indisponível.");
-    }
-
-    const variantRef = productRef.collection("variants").doc(item.variantId);
-    const variantSnap = await variantRef.get();
-
-    if (!variantSnap.exists) {
-      throw new HttpsError("not-found", "Variante não encontrada.");
-    }
-
-    const variant = variantSnap.data();
-
-    if (variant.active !== true) {
-      throw new HttpsError("failed-precondition", "Variação indisponível.");
-    }
-
-    if (variant.stock < item.quantity) {
-      throw new HttpsError("failed-precondition", "Estoque insuficiente.");
-    }
-
-    const unitPrice = variant.price;
-    const subtotal = unitPrice * item.quantity;
-
-    total += subtotal;
-
-    orderItems.push({
-      productId: item.productId,
-      variantId: item.variantId,
-      productName: product.name,
-      color: variant.color,
-      size: variant.size,
-      quantity: item.quantity,
-      unitPrice,
-      subtotal,
-    });
   }
 
-  total += deliveryFee;
+  const orderRef = db.collection('orders').doc();
 
-  const orderRef = db.collection("orders").doc();
+  try {
+    await db.runTransaction(async (transaction) => {
+      const orderItems = [];
+      let total = 0;
 
-  await orderRef.set({
-    customerId: request.auth.uid,
-    customerSnapshot: {
-      name: user.name,
-      email: user.email,
-      phone: user.phone || "",
-    },
-    deliveryAddress,
-    items: orderItems,
-    total,
-    status: "PENDENTE",
-    paymentStatus: "PENDENTE",
-    deliveryType: deliveryType || "RETIRADA",
-    deliveryFee,
-    notes,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+      for (const item of items) {
+        const productRef = db.collection('products').doc(item.productId);
+        const variantRef = productRef.collection('variants').doc(item.variantId);
+
+        // Leituras DENTRO da transaction
+        const [productDoc, variantDoc] = await Promise.all([
+          transaction.get(productRef),
+          transaction.get(variantRef),
+        ]);
+
+        if (!productDoc.exists) {
+          throw new HttpsError('not-found', `Produto ${item.productId} não encontrado.`);
+        }
+        if (productDoc.data().active !== true) {
+          throw new HttpsError('failed-precondition', `Produto "${productDoc.data().name}" indisponível.`);
+        }
+        if (!variantDoc.exists) {
+          throw new HttpsError('not-found', `Variante ${item.variantId} não encontrada.`);
+        }
+        if (variantDoc.data().active !== true) {
+          throw new HttpsError('failed-precondition', 'Variação indisponível.');
+        }
+
+        const currentStock = variantDoc.data().stock ?? 0;
+
+        if (currentStock < item.quantity) {
+          throw new HttpsError(
+              'failed-precondition',
+              `Estoque insuficiente para "${productDoc.data().name}". Disponível: ${currentStock}.`,
+          );
+        }
+
+        const unitPrice = variantDoc.data().price;
+        const subtotal = unitPrice * item.quantity;
+        const newStock = currentStock - item.quantity;
+
+        transaction.update(variantRef, {
+          stock: newStock,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const movementRef = db.collection('stock_movements').doc();
+        transaction.set(movementRef, {
+          productId: item.productId,
+          variantId: item.variantId,
+          type: 'OUT',
+          reason: 'ORDER_CREATED',
+          quantity: item.quantity,
+          previousStock: currentStock,
+          newStock,
+          orderId: orderRef.id,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        total += subtotal;
+
+        orderItems.push({
+          productId: item.productId,
+          variantId: item.variantId,
+          productName: productDoc.data().name,
+          color: variantDoc.data().color,
+          size: variantDoc.data().size,
+          quantity: item.quantity,
+          unitPrice,
+          subtotal,
+        });
+      }
+
+      total += deliveryFee;
+
+      transaction.set(orderRef, {
+        customerId: userId,
+        customerSnapshot: {
+          name: user.name,
+          email: user.email,
+          phone: user.phone || '',
+        },
+        deliveryAddress,
+        items: orderItems,
+        total,
+        status: 'PENDENTE',
+        paymentStatus: 'PENDENTE',
+        deliveryType,
+        deliveryFee,
+        notes: notes.slice(0, 500),
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    logger.error('Erro ao criar pedido', {error: err.message, userId});
+    throw new HttpsError('internal', 'Erro ao criar pedido. Tente novamente.');
+  }
+
+  logger.info('Pedido criado', {orderId: orderRef.id, userId, itemCount: items.length});
 
   return {
     success: true,
-    message: "Pedido criado com sucesso.",
+    message: 'Pedido criado com sucesso.',
     orderId: orderRef.id,
   };
 });
